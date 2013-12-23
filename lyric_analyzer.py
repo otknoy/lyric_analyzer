@@ -20,24 +20,20 @@ def load_lyric_file(filename):
     return ret
 
 def classify_by_year(songs, month=False):
-    ret = {}
+    ret = []
     for s in songs:
         y, m, d = s['year'].split('/')
         key = y
         if month: key += '/' + m
-        if not ret.has_key(key):
-            ret[key] = []
-        ret[key].append(s)
+        ret.append(key)
     return ret
 
 def classify_by_sex(songs):
-    ret = {}
-    for s in songs:
-        key = s['sex']
-        if not ret.has_key(key):
-            ret[key] = []
-        ret[key].append(s)
-    return ret
+    return [s['sex'] for s in songs]
+
+def flatten(l):
+    from itertools import chain
+    return list(chain.from_iterable(l))
 
 
 def lsa(matrix, dim):
@@ -71,47 +67,40 @@ if __name__ == '__main__':
         song = load_lyric_file(filename)
         songs.append(song)
 
-    by_year = classify_by_year(songs, month=False)
-    by_sex = classify_by_sex(songs)
-
-    # print by_year.keys()
-    # print by_sex.keys()
+    # sex_labels = classify_by_sex(songs)
 
     docs = []
-    for sex, songs in by_year.items():
-        text = '\n'.join([s['lyric'] for s in songs]) 
-        text = nlp.normalize(text)
+    for s in songs:
+        text = nlp.normalize(s['lyric'])
         terms = nlp.tokenizer(text)
         terms = nlp.extract_noun(terms)
         terms = nlp.remove_stopword(terms)
         docs.append([t.basic_form for t in terms])
 
+
+    # by year
+    year_labels = classify_by_year(songs, month=False)
+    year_docs = []
+    labels = sorted(list(set(year_labels)))
+    for label in labels:
+        doc = flatten([d for d, l in zip(docs, year_labels) if l == label])
+        year_docs.append(doc)
+
     # tf
-    for label, doc in sorted(zip(by_year.keys(), docs), key=lambda x:x[0]):
-        print label
-        tf = nlp.term_frequency(doc, normalize=True)
+    for l, d in zip(labels, year_docs):    
+        tf = nlp.term_frequency(d)
+        print l
         for t, w, in sorted(tf.items(), key=lambda x:-x[1])[:10]:
             print t.encode('utf-8'), w
         print
 
-    
-    # all tf
-    from itertools import chain
-    all_doc = list(chain.from_iterable(docs))
-    tf = nlp.term_frequency(all_doc)
-    print "word,count"
-    for t, f in sorted(tf.items(), key=lambda x:-x[1]):
-        print "%s, %d" % (t.encode('utf-8'), f)
-    print
+    exit()
 
-    
-
-    import numpy 
-    matrix = numpy.array([e.values() for e in corpus])
-    matrix = lsa(matrix, dim=20)
-    km = kmeans(matrix, k=10)
-
-    labels = km.labels_
-    print labels
-    for f, l in sorted(zip(filenames, labels), key=lambda x:x[1]):
-        print l, f.split('/')[-1].split('.')[0]
+    # tfidf
+    tfidf_list = nlp.tf_idf(year_docs, normalize=True)
+    for l, tfidf in zip(labels, tfidf_list):
+        print l
+        for t, w in sorted(tfidf.items(), key=lambda x:-x[1])[:10]:
+            print t.encode('utf-8'), w
+        print 
+        
