@@ -1,42 +1,54 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import sys
-path="../nlp"
-sys.path.append(path)
+import re
 import nlp
 
-import re
+
+class SongInfo:
+    def __init__(self, filename):
+        f = open(filename)
+        text = nlp.normalize(f.read().decode('utf-8'))
+        f.close()
+        self.title = re.search(r'title:\n(.+)\n', text).group(1)
+        self.singer = re.search(r'singer:\n(.+)\n', text).group(1)
+        self.writer = re.search(r'writer:\n(.+)\n', text).group(1)
+        self.composer = re.search(r'composer:\n(.+)\n', text).group(1)
+        self.year = re.search(r'year:\n(.+)\n', text).group(1)        
+        self.sex = re.search(r'sex:\n(.+)\n', text).group(1)
+        self.lyric = re.search(r'lyric:\n((?:.+\n)+)', text).group()
+
+    def __str__ (self):
+        return ', '.join([self.title, self.singer, self.writer, self.composer, self.year, self.sex]).encode('utf-8')
+
+    def getDate(self, month=False):
+        y, m, d = self.year.split('/')
+        date = y
+        if month: date += '/' + m
+        return date
 
 
-def load_lyric_file(filename):
-    f = open(filename)
-    text = nlp.normalize(f.read().decode('utf-8'))
-    f.close()
-    # return ['\n'.join(e.split('\n')[1:]) for e in text.split('\n\n')]
+def distribution(labels):
+    """
+    return label distribution
+    """
     ret = {}
-    for e in text.split(u'\n\n'):
-        label, s = e.split(u':\n')
-        ret[label] = s
+    for l in sorted(list(set(labels))):
+        ret[l] = labels.count(l)
     return ret
-
-def classify_by_year(songs, month=False):
-    ret = []
-    for s in songs:
-        y, m, d = s['year'].split('/')
-        key = y
-        if month: key += '/' + m
-        ret.append(key)
-    return ret
-
-def classify_by_sex(songs):
-    return [s['sex'] for s in songs]
 
 def flatten(l):
+    """
+    flatten two-dimensional list
+    """
     from itertools import chain
     return list(chain.from_iterable(l))
 
 
 def lsa(matrix, dim):
+    """
+    Latent Semantic Analysis
+    """
     import sklearn.decomposition
     import sklearn.preprocessing
     lsa = sklearn.decomposition.TruncatedSVD(dim)
@@ -64,41 +76,46 @@ if __name__ == '__main__':
 
     songs = []
     for filename in filenames:
-        song = load_lyric_file(filename)
+        # song = load_lyric_file(filename)
+        song = SongInfo(filename)
         songs.append(song)
-
-    # sex_labels = classify_by_sex(songs)
 
     docs = []
     for s in songs:
-        text = nlp.normalize(s['lyric'])
+        text = nlp.normalize(s.lyric)
         terms = nlp.tokenizer(text)
         terms = nlp.extract_noun(terms)
         terms = nlp.remove_stopword(terms)
-        docs.append([t.basic_form for t in terms])
+        s.terms = [t.basic_form for t in terms]
 
+    # dist = distribution([s.getDate(month=True) for s in songs])
+    # for k, v in sorted(dist.items()):
+    #     print k, v
+    # dist = distribution([s.sex for s in songs])
+    # for k, v in sorted(dist.items()):
+    #     print k, v
 
     # by year
-    year_labels = classify_by_year(songs, month=False)
-    year_docs = []
+    year_labels = [s.getDate() for s in songs]
+    year_docs = {}
     labels = sorted(list(set(year_labels)))
     for label in labels:
-        doc = flatten([d for d, l in zip(docs, year_labels) if l == label])
-        year_docs.append(doc)
+        terms = flatten([s.terms for s in songs if s.getDate(month=True) == label])
+        year_docs[label] = terms
 
     # tf
-    for l, d in zip(labels, year_docs):    
-        tf = nlp.term_frequency(d)
-        print l
-        for t, w, in sorted(tf.items(), key=lambda x:-x[1])[:10]:
-            print t.encode('utf-8'), w
-        print
-
-    exit()
+    # for l, d in year_docs.items():
+    #     tf = nlp.term_frequency(d, normalize=True)
+    #     # n = len([s for s in songs if s['year'] == l])
+    #     # print "%s: %d songs" % (l, n)
+    #     print l.encode('utf-8')
+    #     for t, w, in sorted(tf.items(), key=lambda x:-x[1])[:10]:
+    #         print t.encode('utf-8'), w
+    #     print
 
     # tfidf
-    tfidf_list = nlp.tf_idf(year_docs, normalize=True)
-    for l, tfidf in zip(labels, tfidf_list):
+    tfidf_list = nlp.tf_idf(year_docs.values(), normalize=True)
+    for l, tfidf in zip(labels, tfidf_list)[-15:]:
         print l
         for t, w in sorted(tfidf.items(), key=lambda x:-x[1])[:10]:
             print t.encode('utf-8'), w
