@@ -100,7 +100,7 @@ if __name__ == '__main__':
     year_docs = {}
     labels = sorted(list(set(year_labels)))
     for label in labels:
-        terms = flatten([s.terms for s in songs if s.getDate(month=True) == label])
+        terms = flatten([s.terms for s in songs if s.getDate() == label])
         year_docs[label] = terms
 
     # tf
